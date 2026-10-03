@@ -67,7 +67,9 @@ object APIClient {
         var model = m?.trim()?.ifEmpty { null }
             ?: cfg.imgModel.trim().ifEmpty { if (isEdit) DEFAULT_EDIT_MODEL else DEFAULT_TEXT_MODEL }
         if (model !in SUPPORTED_MODELS) {
-            throw APIException("不支持的模型：$model（可选：${SUPPORTED_MODELS.joinToString(" / ")}）")
+            val m = "不支持的模型：$model（可选：${SUPPORTED_MODELS.joinToString(" / ")}）"
+            LogStore.err(m)
+            throw APIException(m)
         }
         if (model == "gpt-image-2" && isHighResSize(size)) model = "gpt-image-2-openai"
         return model
@@ -148,6 +150,7 @@ object APIClient {
         val effQuality = quality?.trim()?.ifEmpty { null } ?: cfg.quality
         val finalQuality = resolveQuality(effModel, effQuality)
 
+        LogStore.info("文生图: 模型=$effModel 尺寸=$effSize n=$effN 提示词=${prompt.take(60)}")
         val url = "${trimBase(cfg.imgBase)}/v1/images/generations"
         val body = JSONObject()
             .put("model", effModel)
@@ -165,8 +168,20 @@ object APIClient {
 
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string() ?: ""
-            if (!resp.isSuccessful) throw APIException(errorMessage(text))
-            return parseImages(text)
+            if (!resp.isSuccessful) {
+                val m = errorMessage(text)
+                // 服务商可能限制某模型仅支持 low 质量（如部分 2.5 服务端），自动降级 low 重试一次
+                val wantLow = (m.contains("low") && (m.contains("only") || m.contains("support"))) || m.contains("quality")
+                if (wantLow && finalQuality != null && finalQuality != "low") {
+                    LogStore.warn("服务端要求 low 质量，自动降级重试: $m")
+                    return generate(cfg, prompt, effModel, effSize, "low", effN)
+                }
+                LogStore.err("文生图失败(${effModel}): $m")
+                throw APIException(m)
+            }
+            val imgs = parseImages(text)
+            LogStore.ok("文生图完成: ${imgs.size}张")
+            return imgs
         }
     }
 
@@ -182,6 +197,7 @@ object APIClient {
         val effQuality = quality?.trim()?.ifEmpty { null } ?: cfg.quality
         val finalQuality = resolveQuality(effModel, effQuality)
 
+        LogStore.info("图生图/编辑: 模型=$effModel 尺寸=$effSize n=$effN 参考图=${images.size}张 提示词=${prompt.take(60)}")
         val url = "${trimBase(cfg.imgBase)}/v1/images/edits"
         val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
         builder.addFormDataPart("prompt", prompt)
@@ -206,8 +222,20 @@ object APIClient {
 
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string() ?: ""
-            if (!resp.isSuccessful) throw APIException(errorMessage(text))
-            return parseImages(text)
+            if (!resp.isSuccessful) {
+                val m = errorMessage(text)
+                // 服务商可能限制某模型仅支持 low 质量，自动降级 low 重试一次
+                val wantLow = (m.contains("low") && (m.contains("only") || m.contains("support"))) || m.contains("quality")
+                if (wantLow && finalQuality != null && finalQuality != "low") {
+                    LogStore.warn("服务端要求 low 质量，自动降级重试: $m")
+                    return edit(cfg, prompt, images, effModel, effSize, "low", effN)
+                }
+                LogStore.err("图生图/编辑失败(${effModel}): $m")
+                throw APIException(m)
+            }
+            val imgs = parseImages(text)
+            LogStore.ok("图生图/编辑完成: ${imgs.size}张")
+            return imgs
         }
     }
 
@@ -218,14 +246,24 @@ object APIClient {
     /** 当前可用的生图模型列表：自动拉取 /v1/models 过滤废弃模型，再与白名单取交集；
      *  拉取失败或列表为空时回落白名单（保证 UI 不空），生图模型也可能被弃用，故不写死 */
     fun availableImageModels(cfg: AppConfig): List<String> {
-        imgModelCache?.let { return it }
+        imgModelCache?.let { cached ->
+            LogStore.debug("可用生图模型走缓存: ${cached.size}个")
+            return cached
+        }
         val usable = try {
             val all = listImageModels(cfg)
             SUPPORTED_MODELS.filter { it in all }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            LogStore.warn("生图模型列表拉取失败: ${e.message}")
             emptyList()
         }
-        val result = if (usable.isEmpty()) SUPPORTED_MODELS else usable
+        val result = if (usable.isEmpty()) {
+            LogStore.warn("可用生图模型为空，回落白名单 ${SUPPORTED_MODELS.size} 个")
+            SUPPORTED_MODELS
+        } else {
+            LogStore.ok("获取可用生图模型: ${usable.joinToString("/")}")
+            usable
+        }
         imgModelCache = result
         return result
     }
@@ -240,7 +278,11 @@ object APIClient {
             .build()
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string() ?: ""
-            if (!resp.isSuccessful) throw APIException(errorMessage(text))
+            if (!resp.isSuccessful) {
+                val m = errorMessage(text)
+                LogStore.warn("模型列表拉取失败: $m")
+                throw APIException(m)
+            }
             val arr = JSONObject(text).optJSONArray("data") ?: return emptyList()
             val out = ArrayList<String>()
             for (i in 0 until arr.length()) {
@@ -264,6 +306,7 @@ object APIClient {
 
     /** 多模态规划：自动选择生图模型/尺寸/质量/张数并产出英文提示词（生图模型只是执行工具） */
     fun plan(cfg: AppConfig, goal: String, images: List<Bitmap> = emptyList()): GenPlan {
+        LogStore.info("多模态规划: 目标=${goal.take(60)} 参考图=${images.size}张")
         val url = "${trimBase(cfg.chatBase)}/v1/chat/completions"
         val hasImage = images.isNotEmpty()
         // 生图模型可用列表动态获取（过滤废弃），避免规划到已弃用模型
@@ -275,7 +318,8 @@ object APIClient {
                 (if (hasImage) "有参考图优先选 gpt-image-2.5-sunburst（编辑/融合），" else "无参考图默认 gpt-image-2.5-flare（文生图），") +
                 "size 从 [1024x1024, 1280x720, 720x1280, 1024x1536, 1536x1024, 2048x2048, 2048x1152, 1152x2048, 3840x2160, 2160x3840] 按画面需要选择；" +
                 "quality 从 auto/low/medium/high/xhigh/max 中选择（旧模型最高 high）；n 为 1~4 的整数，2K/4K 高清必须为 1；" +
-                "prompt 为细节丰富、可直接交给生图模型执行的英文提示词。只输出 JSON，不要任何额外文字。"
+                "prompt 为细节丰富、可直接交给生图模型执行的英文提示词，书写必须遵循以下官方规范：\n${cfg.assetPrompt}\n" +
+                "只输出 JSON，不要任何额外文字。"
 
         val content = org.json.JSONArray()
         content.put(JSONObject().put("type", "text").put("text", "用户目标：$goal"))
@@ -308,8 +352,14 @@ object APIClient {
 
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string() ?: ""
-            if (!resp.isSuccessful) throw APIException(errorMessage(text))
-            return parsePlan(cfg, parseText(text), goal, hasImage)
+            if (!resp.isSuccessful) {
+                val m = errorMessage(text)
+                LogStore.err("多模态规划失败: $m")
+                throw APIException(m)
+            }
+            val plan = parsePlan(cfg, parseText(text), goal, hasImage)
+            LogStore.ok("规划完成: ${plan.model} ${plan.size} ${plan.quality ?: "-"} n=${plan.n}")
+            return plan
         }
     }
 
@@ -377,9 +427,10 @@ object APIClient {
     }
 
     fun review(cfg: AppConfig, goal: String, prompt: String, image: Bitmap): ReviewResult {
+        LogStore.info("AI 评审: 目标=${goal.take(40)} 提示词=${prompt.take(40)}")
         val url = "${trimBase(cfg.chatBase)}/v1/chat/completions"
         // 注入用户配置的主控系统提示词，多模态模型负责决策，生图模型只是执行工具
-        val sys = cfg.chatSystem + "\n\n当前任务：评审这张由生图模型生成的图片是否达成用户目标，按系统规则输出 JSON。"
+        val sys = cfg.chatSystem + "\n\n当前任务：评审这张由生图模型生成的图片是否达成用户目标，按系统规则输出 JSON。\n生成提示词书写规范参考：\n" + cfg.assetPrompt
 
         val bos = ByteArrayOutputStream()
         image.compress(Bitmap.CompressFormat.JPEG, 85, bos)
@@ -411,8 +462,14 @@ object APIClient {
 
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string() ?: ""
-            if (!resp.isSuccessful) throw APIException(errorMessage(text))
-            return parseReview(text)
+            if (!resp.isSuccessful) {
+                val m = errorMessage(text)
+                LogStore.err("AI 评审失败: $m")
+                throw APIException(m)
+            }
+            val r = parseReview(text)
+            LogStore.ok("评审完成: 通过=${r.satisfied} ${r.comment.take(40)}")
+            return r
         }
     }
 

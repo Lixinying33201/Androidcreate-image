@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 默认禁止明文；仅放行 micuapi.ai 域名（含子域），解决设置页手填 http://www.micuapi.ai 被系统掐断的问题 -->
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">micuapi.ai</domain>
+    </domain-config>
+</network-security-config>

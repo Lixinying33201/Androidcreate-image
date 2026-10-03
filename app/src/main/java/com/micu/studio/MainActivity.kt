@@ -15,6 +15,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -41,8 +42,17 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot() {
     val context = LocalContext.current
-    val config = remember { AppConfig(context.applicationContext) }
+    val appState = remember { AppState(context.applicationContext) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    remember { LogStore.info("App 启动 v1.8 对话式重构，进入创作页可查看实时日志") }
+
+    // 长按移送/资产库带入：pendingMode 非空时跳到创作页（素材由 CreateScreen 消费并清空）
+    val pendingMode by appState.pendingMode
+    LaunchedEffect(pendingMode) {
+        if (pendingMode != null) {
+            tab = 0
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -56,8 +66,8 @@ fun AppRoot() {
                 NavigationBarItem(
                     selected = tab == 1,
                     onClick = { tab = 1 },
-                    icon = { Icon(Icons.Filled.List, contentDescription = "图库") },
-                    label = { Text("图库") }
+                    icon = { Icon(Icons.Filled.List, contentDescription = "资产库") },
+                    label = { Text("资产库") }
                 )
                 NavigationBarItem(
                     selected = tab == 2,
@@ -70,9 +80,9 @@ fun AppRoot() {
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                0 -> CreateScreen(config)
-                1 -> GalleryScreen(context)
-                2 -> SettingsScreen(config)
+                0 -> CreateScreen(appState)
+                1 -> GalleryScreen(appState)
+                2 -> SettingsScreen(appState.config)
             }
         }
     }
