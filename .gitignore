@@ -1,0 +1,23 @@
+# Gradle 构建产物
+.gradle/
+build/
+app/build/
+.kotlin/
+
+# 本地配置（含本机 SDK 路径）
+local.properties
+
+# 历史打包产物（APK 体积大，不上传仓库）
+*.apk
+*.idsig
+
+# IDE
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# 系统文件
+.DS_Store
+Thumbs.db
