@@ -54,6 +54,21 @@ private val QUALITIES_LEGACY = listOf("auto", "low", "medium", "high")
 private val MODELS_25 = listOf("gpt-image-2.5-flare", "gpt-image-2.5-sunburst")
 private val MODELS_LEGACY = listOf("gpt-image-1", "dall-e-3", "dall-e-2")
 private val EXECUTOR_OPTIONS = listOf("multimodal", "auto", "direct")
+/** 显示层中文映射：存储值保持英文，界面展示中文 */
+private fun executorLabel(v: String) = when (v) {
+    "multimodal" -> "多模态主控（大脑规划 + 自动评审续生）"
+    "auto" -> "自动（智能选择）"
+    "direct" -> "生图模型直出（提示词直送，不评审）"
+    else -> v
+}
+private fun modelLabel(m: String) = when (m) {
+    "gpt-image-2.5-flare" -> "GPT Image 2.5 闪焰（默认 · 文生图）"
+    "gpt-image-2.5-sunburst" -> "GPT Image 2.5 日晖（质量 · 编辑/融合）"
+    "gpt-image-1" -> "GPT Image 1"
+    "dall-e-3" -> "DALL·E 3"
+    "dall-e-2" -> "DALL·E 2"
+    else -> m
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -218,18 +233,18 @@ fun SettingsScreen(config: AppConfig) {
                 TextButtonRestore("恢复默认主控", onClick = { config.chatSystem = DEFAULT_CHAT_SYSTEM })
             }
 
-            item { SectionTitle("Executor / Direct 模型") }
+            item { SectionTitle("执行方式与直出模型") }
             item {
                 ExposedDropdownMenuBox(expanded = executorExpanded, onExpandedChange = { executorExpanded = it }) {
                     OutlinedTextField(
-                        value = config.executor, onValueChange = {}, readOnly = true,
-                        label = { Text("Executor 执行方式") },
+                        value = executorLabel(config.executor), onValueChange = {}, readOnly = true,
+                        label = { Text("执行方式") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = executorExpanded) },
                         modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
                     )
                     ExposedDropdownMenu(expanded = executorExpanded, onDismissRequest = { executorExpanded = false }) {
                         EXECUTOR_OPTIONS.forEach { m ->
-                            DropdownMenuItem(text = { Text(m) }, onClick = { config.executor = m; executorExpanded = false })
+                            DropdownMenuItem(text = { Text(executorLabel(m)) }, onClick = { config.executor = m; executorExpanded = false })
                         }
                     }
                 }
@@ -237,14 +252,14 @@ fun SettingsScreen(config: AppConfig) {
             item {
                 ExposedDropdownMenuBox(expanded = directModelExpanded, onExpandedChange = { directModelExpanded = it }) {
                     OutlinedTextField(
-                        value = config.directModel, onValueChange = {}, readOnly = true,
-                        label = { Text("Direct 模型") },
+                        value = modelLabel(config.directModel), onValueChange = {}, readOnly = true,
+                        label = { Text("直出模型（仅「直出」方式生效）") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = directModelExpanded) },
                         modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
                     )
                     ExposedDropdownMenu(expanded = directModelExpanded, onDismissRequest = { directModelExpanded = false }) {
                         (MODELS_25 + MODELS_LEGACY).forEach { m ->
-                            DropdownMenuItem(text = { Text(m) }, onClick = { config.directModel = m; directModelExpanded = false })
+                            DropdownMenuItem(text = { Text(modelLabel(m)) }, onClick = { config.directModel = m; directModelExpanded = false })
                         }
                     }
                 }
