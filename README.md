@@ -1,13 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 26671e2fba3e30f6feb202b95dba33ec_a964dab1be0611f1a05452540064ee0f
-    ReservedCode1: F1BYnjRNx/cnMbAWQCKzvvIzjPclx2FhQHFVjG9ul6QJBOZU0F4NPGq+xNdFYI0B1Es96zHhR0YLCaf+eWpbItbWB/9eFYzLzXhBA0kNLYxsflIYkYcSRSoUESsLPFgDZzMLe6WG+Y4yOwGkwaByiEZ8vFXlZmBKQtclhGIg+TvoqmMDQ+51IhJUgu0=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 26671e2fba3e30f6feb202b95dba33ec_a964dab1be0611f1a05452540064ee0f
-    ReservedCode2: F1BYnjRNx/cnMbAWQCKzvvIzjPclx2FhQHFVjG9ul6QJBOZU0F4NPGq+xNdFYI0B1Es96zHhR0YLCaf+eWpbItbWB/9eFYzLzXhBA0kNLYxsflIYkYcSRSoUESsLPFgDZzMLe6WG+Y4yOwGkwaByiEZ8vFXlZmBKQtclhGIg+TvoqmMDQ+51IhJUgu0=
----
 
 # 生图台 Android 原生版（Kotlin + Jetpack Compose）
 
