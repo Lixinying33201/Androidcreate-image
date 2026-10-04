@@ -1,3 +1,4 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.micu.studio.ui
 
 import android.graphics.BitmapFactory
@@ -66,6 +67,7 @@ import com.micu.studio.AssetCategory
 import com.micu.studio.AssetItem
 import com.micu.studio.AssetStore
 import com.micu.studio.GenMode
+import com.micu.studio.LogStore
 import com.micu.studio.PendingImage
 import java.io.File
 
@@ -410,7 +412,7 @@ fun GalleryScreen(appState: AppState) {
                             val paths = if (selected.isNotEmpty()) selected.toList() else menuItem?.let { listOf(it.path) } ?: emptyList()
                             paths.forEach { appState.addPendingImage(it) }
                             appState.newSession(mode)
-                            appState.setPendingMode(mode)
+                            appState.pendingMode = mode
                             selected = emptySet(); menuItem = null
                             showNewOldDialog = false
                         }
@@ -423,7 +425,7 @@ fun GalleryScreen(appState: AppState) {
                                 val paths = if (selected.isNotEmpty()) selected.toList() else menuItem?.let { listOf(it.path) } ?: emptyList()
                                 paths.forEach { appState.addPendingImage(it) }
                                 appState.openSession(s.id)
-                                appState.setPendingMode(mode)
+                                appState.pendingMode = mode
                                 selected = emptySet(); menuItem = null
                                 showNewOldDialog = false
                             }

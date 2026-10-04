@@ -1,3 +1,4 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.micu.studio.ui
 
 import android.content.ContentValues
@@ -103,7 +104,7 @@ fun CreateScreen(appState: AppState) {
 
     var mode by remember { mutableStateOf(GenMode.TEXT) }
     var input by remember { mutableStateOf("") }
-    var pickedImages by remember { mutableStateListOf<String>() }
+    val pickedImages = remember { mutableStateListOf<String>() }
     var multiSelect by remember { mutableStateOf(false) }
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     var menuImage by remember { mutableStateOf<GenImage?>(null) }
@@ -119,7 +120,7 @@ fun CreateScreen(appState: AppState) {
     val session = appState.currentSession()
 
     // 移送带入：pendingMode 非空时（MainActivity 已切到本页）建会话并携带素材
-    val pendingMode by appState.pendingMode
+    val pendingMode = appState.pendingMode
     LaunchedEffect(pendingMode) {
         if (pendingMode != null) {
             mode = pendingMode!!
@@ -170,13 +171,13 @@ fun CreateScreen(appState: AppState) {
         s.touch()
         input = ""
         pickedImages.clear()
-        appState.setBusy(true)
+        appState.busy = true
         appState.setTask(TaskState.Planning())
         scope.launch {
             GenEngine.run(context, appState, s, goal.ifEmpty { "根据参考图生成" }, uploads, mode) { st ->
                 appState.setTask(st)
             }
-            appState.setBusy(false)
+            appState.busy = false
         }
     }
 
@@ -466,7 +467,7 @@ fun CreateScreen(appState: AppState) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     DialogRow("新对话", Icons.Filled.Add) {
                         paths.forEach { appState.addPendingImage(it) }
-                        appState.setPendingMode(m)
+                        appState.pendingMode = m
                         moveNewOldDialog = false
                         selectedPaths = emptySet()
                         movePaths = emptyList()
@@ -653,7 +654,7 @@ private fun MessageRow(
                                     .clip(RoundedCornerShape(11.dp))
                                     .background(Color(0xFF1E88E5)),
                                 contentAlignment = Alignment.Center
-                            ) { Icon(Icons.Filled.Check, null, tint = Color.White, Modifier.size(15.dp)) }
+                            ) { Icon(Icons.Filled.Check, null, Modifier.size(15.dp), tint = Color.White) }
                         }
                         Text(
                             fmtTime(img.ts),

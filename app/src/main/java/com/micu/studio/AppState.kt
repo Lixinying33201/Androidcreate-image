@@ -34,7 +34,6 @@ class AppState(context: Context) {
 
     /** 全局任务进行中：防重入 */
     var busy by mutableStateOf(false)
-        private set
 
     var taskState by mutableStateOf<TaskState>(TaskState.Idle)
         private set
@@ -43,7 +42,6 @@ class AppState(context: Context) {
     val pendingImages = mutableStateListOf<PendingImage>()
     var pendingMode by mutableStateOf<GenMode?>(null)
 
-    fun setBusy(v: Boolean) { busy = v }
     fun setTask(s: TaskState) { taskState = s }
 
     fun newSession(mode: GenMode, title: String = mode.label): ChatSession {
@@ -77,5 +75,4 @@ class AppState(context: Context) {
     }
 
     fun clearPending() = pendingImages.clear()
-    fun setPendingMode(mode: GenMode) { pendingMode = mode }
 }

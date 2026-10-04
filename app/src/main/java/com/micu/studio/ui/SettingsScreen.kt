@@ -17,7 +17,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
@@ -54,6 +53,7 @@ private val QUALITIES_25 = listOf("auto", "low", "medium", "high", "xhigh", "max
 private val QUALITIES_LEGACY = listOf("auto", "low", "medium", "high")
 private val MODELS_25 = listOf("gpt-image-2.5-flare", "gpt-image-2.5-sunburst")
 private val MODELS_LEGACY = listOf("gpt-image-1", "dall-e-3", "dall-e-2")
+private val EXECUTOR_OPTIONS = listOf("multimodal", "auto", "direct")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,7 +107,7 @@ fun SettingsScreen(config: AppConfig) {
             item {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Text("对话模型：${config.chatModel}", modifier = Modifier.weight(1f))
-                    Button(onClick = runTest, enabled = !testing) { Text(if (testing) "测试中…" else "测试连接") }
+                    Button(onClick = { runTest() }, enabled = !testing) { Text(if (testing) "测试中…" else "测试连接") }
                 }
                 if (testStatus.isNotEmpty()) Text(testStatus, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
             }

@@ -47,7 +47,7 @@ fun AppRoot() {
     remember { LogStore.info("App 启动 v1.8 对话式重构，进入创作页可查看实时日志") }
 
     // 长按移送/资产库带入：pendingMode 非空时跳到创作页（素材由 CreateScreen 消费并清空）
-    val pendingMode by appState.pendingMode
+    val pendingMode = appState.pendingMode
     LaunchedEffect(pendingMode) {
         if (pendingMode != null) {
             tab = 0
