@@ -12,8 +12,8 @@ android {
         applicationId = "com.micu.studio"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.8"
+        versionCode = 10
+        versionName = "1.8.1"
     }
 
     buildTypes {
