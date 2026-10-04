@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -139,28 +138,17 @@ object GenEngine {
                             onTask(TaskState.Done(true, "评审未给出新提示词，已停止"))
                             return
                         }
-                        // 迭代窗口：等待用户追加要求/参考图；未追加则自动用评审优化提示词续生
-                        val windowStart = System.currentTimeMillis()
-                        val deadline = windowStart + cfg.iterWindowSec * 1000L
-                        var appended: String? = null
-                        onTask(TaskState.Done(false, "第 $turn 版未达标：${review.comment}（${cfg.iterWindowSec} 秒内可追加要求）"))
-                        while (System.currentTimeMillis() < deadline) {
-                            val lastMsg = session.messages.lastOrNull()
-                            if (lastMsg != null && lastMsg.role == "user" && lastMsg.ts > windowStart) {
-                                appended = lastMsg.text
-                                break
-                            }
-                            delay(300)
-                        }
-                        if (appended != null) {
-                            currentGoal = appended
-                            lastPlan = null
-                            clearPrompt(session.id)
+                        // 迭代续生：不再等待固定窗口（原先默认 60 秒干等），评审不过立即用优化提示词续生；
+                        // 用户在此期间发消息追加要求，下一轮循环开头会自动合并（currentGoal != goal 时拼"调整"）
+                        val lastMsg = session.messages.lastOrNull()
+                        if (lastMsg != null && lastMsg.role == "user") {
+                            currentGoal = lastMsg.text
                         } else {
                             currentGoal = review.nextPrompt
-                            lastPlan = null
-                            clearPrompt(session.id)
                         }
+                        lastPlan = null
+                        clearPrompt(session.id)
+                        onTask(TaskState.Done(false, "第 $turn 版未达标：${review.comment}，自动用优化提示词续生，可随时追加要求"))
                     }
                 }
             }

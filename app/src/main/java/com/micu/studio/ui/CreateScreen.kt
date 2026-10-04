@@ -122,7 +122,6 @@ fun CreateScreen(appState: AppState) {
     var moveTargetMode by remember { mutableStateOf<GenMode?>(null) }
     var movePaths by remember { mutableStateOf<List<String>>(emptyList()) }
     var confirmDelete by remember { mutableStateOf<GenImage?>(null) }
-    var iterCountdown by remember { mutableIntStateOf(-1) }
 
     val session = appState.currentSession()
 
@@ -163,16 +162,6 @@ fun CreateScreen(appState: AppState) {
     val messages = session?.messages ?: emptyList()
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
-    }
-    // 迭代窗口倒计时：任务处于“未达标等待追加”时显示
-    LaunchedEffect(taskState) {
-        if (taskState is TaskState.Done && !taskState.ok) {
-            iterCountdown = appState.config.iterWindowSec
-            while (iterCountdown > 0) {
-                delay(1000)
-                iterCountdown--
-            }
-        }
     }
 
     fun send() {
@@ -264,7 +253,7 @@ fun CreateScreen(appState: AppState) {
                         Column {
                             Text(session?.title ?: mode.label, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (mode == GenMode.ITER) {
-                                Text(if (iterCountdown > 0) "迭代窗口 ${iterCountdown}s，可追加要求" else "迭代模式 · 自动评审续生", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+                                Text("迭代模式 · 自动评审续生，可随时追加要求", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     },

@@ -75,10 +75,11 @@ object APIClient {
         return model
     }
 
-    /** 质量钳制：非 2.5 模型最高只支持 high */
+    /** 质量钳制：2.5 系列服务端仅支持 low；非 2.5 模型最高只支持 high */
     private fun resolveQuality(model: String, quality: String): String? {
         if (quality !in QUALITY_MAX_ALL) return null
-        if (!is25Model(model) && quality in listOf("xhigh", "max")) return "high"
+        if (is25Model(model)) return "low"
+        if (quality in listOf("xhigh", "max")) return "high"
         return quality
     }
 

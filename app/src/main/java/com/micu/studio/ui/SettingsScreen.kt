@@ -49,7 +49,7 @@ private val SIZES = listOf(
     "1024x1024", "1280x720", "720x1280", "1024x1536", "1536x1024",
     "2048x2048", "2048x1152", "1152x2048", "3840x2160", "2160x3840"
 )
-private val QUALITIES_25 = listOf("auto", "low", "medium", "high", "xhigh", "max")
+private val QUALITIES_25 = listOf("low")
 private val QUALITIES_LEGACY = listOf("auto", "low", "medium", "high")
 private val MODELS_25 = listOf("gpt-image-2.5-flare", "gpt-image-2.5-sunburst")
 private val MODELS_LEGACY = listOf("gpt-image-1", "dall-e-3", "dall-e-2")
@@ -120,6 +120,12 @@ fun SettingsScreen(config: AppConfig) {
                 SettingTextField(config.chatKey, { config.chatKey = it }, "对话 API Key")
             }
             item {
+                SettingTextField(config.imgBase, { config.imgBase = it }, "生图 API 地址")
+            }
+            item {
+                SettingTextField(config.imgKey, { config.imgKey = it }, "生图 API Key（必填，否则生图报 Invalid token）")
+            }
+            item {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Text("对话模型：${config.chatModel}", modifier = Modifier.weight(1f))
                     Button(onClick = { runTest() }, enabled = !testing) { Text(if (testing) "测试中…" else "测试连接") }
@@ -183,9 +189,6 @@ fun SettingsScreen(config: AppConfig) {
                 SettingNumberSlider("单轮最多上传参考图", config.maxUpload, 1..6, 1) { config.maxUpload = it }
             }
             item {
-                SettingNumberSlider("迭代窗口（秒）", config.iterWindowSec, 10..120, 10) { config.iterWindowSec = it }
-            }
-            item {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Text("迭代自动评审续生", modifier = Modifier.weight(1f))
                     Switch(checked = config.iterAutoReview, onCheckedChange = { config.iterAutoReview = it })
@@ -222,8 +225,9 @@ fun SettingsScreen(config: AppConfig) {
 
             item { SectionTitle("多模态主控（chatSystem）") }
             item {
+                var sysText by remember { mutableStateOf(config.chatSystem) }
                 OutlinedTextField(
-                    value = config.chatSystem, onValueChange = { config.chatSystem = it },
+                    value = sysText, onValueChange = { sysText = it; config.chatSystem = it },
                     label = { Text("主控系统提示词") },
                     minLines = 3, maxLines = 8,
                     modifier = Modifier.fillMaxWidth()
@@ -283,8 +287,10 @@ private fun SectionTitle(t: String) {
 
 @Composable
 private fun SettingTextField(value: String, onSet: (String) -> Unit, label: String) {
+    // 本地 State 缓存：SharedPreferences 不是 Compose 状态，直接绑定会导致输入不刷新（填不进去）
+    var text by remember { mutableStateOf(value) }
     OutlinedTextField(
-        value = value, onValueChange = { onSet(it) },
+        value = text, onValueChange = { text = it; onSet(it) },
         label = { Text(label) }, singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
