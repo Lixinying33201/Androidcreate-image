@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 
 /** 全局任务状态，供进度动画/进度条展示 */
@@ -35,6 +36,9 @@ class AppState(context: Context) {
     /** 全局任务进行中：防重入 */
     var busy by mutableStateOf(false)
 
+    /** 当前生图任务协程，供“停止生成”取消 */
+    var currentJob: Job? = null
+
     var taskState by mutableStateOf<TaskState>(TaskState.Idle)
         private set
 
@@ -43,6 +47,14 @@ class AppState(context: Context) {
     var pendingMode by mutableStateOf<GenMode?>(null)
 
     fun setTask(s: TaskState) { taskState = s }
+
+    /** 停止当前生成任务（迭代窗口/各模式循环会在下一个检查点退出） */
+    fun cancelCurrentTask() {
+        currentJob?.cancel()
+        currentJob = null
+        busy = false
+        setTask(TaskState.Idle)
+    }
 
     fun newSession(mode: GenMode, title: String = mode.label): ChatSession {
         val s = ChatSession(mode = mode, title = title)

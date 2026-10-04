@@ -304,6 +304,98 @@ object APIClient {
     /** 自动获取生图 API 的可用生图模型列表（生图模型也可能被弃用，须从生图端点动态拉取） */
     fun listImageModels(cfg: AppConfig): List<String> = listModelsAt(cfg.imgBase, cfg.imgKey)
 
+    /** 对话模式：多模态对话。携带会话历史与可选参考图，返回 AI 文本回复；
+     *  用户请求生图时（genEnabled=true），回复文本前带 [GEN]{"prompt":"..."} 标记 */
+    fun chat(cfg: AppConfig, history: List<ChatMessage>, images: List<Bitmap>, genEnabled: Boolean): ChatReply {
+        LogStore.info("对话模式: 历史=${history.size}条 参考图=${images.size}张 gen=${genEnabled}")
+        val url = "${trimBase(cfg.chatBase)}/v1/chat/completions"
+        val sys = "你是用户的多模态对话助手。规则：\n" +
+            "1. 用户只是聊天（闲聊/答疑/讨论）时，直接自然回复，不要加任何标记；\n" +
+            "2. 用户请求生成/绘制/创作图片时，回复必须以 [GEN]{\"prompt\":\"可直接执行的英文生图提示词\"} 开头，紧接一段对用户的简短中文说明；\n" +
+            "3. 有参考图时，先简短理解参考图内容再回复，生图时结合参考图写提示词；\n" +
+            "4. 每次回复最多输出一个 [GEN] 标记；prompt 须细节丰富，遵循官方规范：\n${cfg.assetPrompt}"
+
+        val arr = org.json.JSONArray()
+        arr.put(JSONObject().put("role", "system").put("content", sys))
+        history.takeLast(10).forEach { m ->
+            val content = org.json.JSONArray().put(
+                JSONObject().put("type", "text").put("text", m.text.ifBlank { "（图片消息）" })
+            )
+            if (m.role == "user") {
+                m.uploads.take(3).forEach { p ->
+                    runCatching {
+                        val bm = BitmapFactory.decodeFile(p)
+                        if (bm != null) {
+                            val scaled = scaleToMax(bm, 1024)
+                            val bos = ByteArrayOutputStream()
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 80, bos)
+                            val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+                            content.put(JSONObject()
+                                .put("type", "image_url")
+                                .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64")))
+                        }
+                    }
+                }
+            }
+            arr.put(JSONObject().put("role", m.role).put("content", content))
+        }
+        if (images.isNotEmpty()) {
+            val content = org.json.JSONArray().put(
+                JSONObject().put("type", "text").put("text", "[本轮上传 ${images.size} 张参考图]")
+            )
+            images.take(4).forEach { bm ->
+                val scaled = scaleToMax(bm, 1024)
+                val bos = ByteArrayOutputStream()
+                scaled.compress(Bitmap.CompressFormat.JPEG, 80, bos)
+                val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+                content.put(JSONObject()
+                    .put("type", "image_url")
+                    .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64")))
+            }
+            arr.put(JSONObject().put("role", "user").put("content", content))
+        }
+
+        val body = JSONObject()
+            .put("model", cfg.chatModel)
+            .put("temperature", cfg.chatTemp)
+            .put("max_tokens", 1200)
+            .put("messages", arr)
+
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer ${cfg.chatKey}")
+            .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+
+        client.newCall(req).execute().use { resp ->
+            val text = resp.body?.string() ?: ""
+            if (!resp.isSuccessful) {
+                val m = errorMessage(text)
+                LogStore.err("对话失败: $m")
+                throw APIException(m)
+            }
+            val raw = parseText(text)
+            var genPrompt: String? = null
+            var replyText = raw
+            if (genEnabled && raw.contains("[GEN]")) {
+                val idx = raw.indexOf("[GEN]")
+                val rest = raw.substring(idx + 5)
+                val start = rest.indexOf('{')
+                val end = rest.lastIndexOf('}')
+                if (start >= 0 && end > start) {
+                    runCatching {
+                        val j = JSONObject(rest.substring(start, end + 1))
+                        genPrompt = j.optString("prompt", "").trim().ifEmpty { null }
+                    }
+                }
+                replyText = (raw.substring(0, idx) + if (start >= 0) rest.substring(end + 1) else rest).trim()
+                    .ifEmpty { "已按你的要求生成图片" }
+            }
+            LogStore.ok("对话完成: gen=${genPrompt != null} 回复=${replyText.take(40)}")
+            return ChatReply(replyText, genPrompt)
+        }
+    }
+
     /** 多模态规划：自动选择生图模型/尺寸/质量/张数并产出英文提示词（生图模型只是执行工具） */
     fun plan(cfg: AppConfig, goal: String, images: List<Bitmap> = emptyList()): GenPlan {
         LogStore.info("多模态规划: 目标=${goal.take(60)} 参考图=${images.size}张")

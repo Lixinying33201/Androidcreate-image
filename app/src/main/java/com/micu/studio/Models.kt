@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 
 enum class GenMode(val label: String, val needImage: Boolean) {
+    CHAT("对话模式", false),
     TEXT("文生图", false),
     EDIT("图生图", true),
     FUSION("多图融合", true),
@@ -38,6 +39,9 @@ const val DEFAULT_ASSET_PROMPT: String =
     "8. 默认 1~3 句清晰英文，复杂需求才用结构化分节。"
 
 data class ReviewResult(val satisfied: Boolean, val comment: String, val nextPrompt: String)
+
+/** 对话模式回复：纯聊天文本 + 可选生图提示词（用户请求生图时非空） */
+data class ChatReply(val text: String, val genPrompt: String?)
 
 data class SavedImage(val uri: String, val prompt: String, val date: Long)
 

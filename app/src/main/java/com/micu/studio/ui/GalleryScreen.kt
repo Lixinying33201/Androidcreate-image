@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Star
@@ -82,6 +83,7 @@ fun GalleryScreen(appState: AppState) {
     var multiSelect by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<AssetItem?>(null) }
     var tagDialogItem by remember { mutableStateOf<AssetItem?>(null) }
+    var batchTag by remember { mutableStateOf(false) }
     var tagInput by remember { mutableStateOf("") }
     var menuItem by remember { mutableStateOf<AssetItem?>(null) }
     var showMoveModeDialog by remember { mutableStateOf(false) }
@@ -153,10 +155,8 @@ fun GalleryScreen(appState: AppState) {
                             }
                             refresh()
                         }, label = { Text("收藏") }, leadingIcon = { Icon(Icons.Filled.Star, null, Modifier.size(16.dp)) })
-                        AssistChip(onClick = {
-                            selected.forEach { p -> AssetStore.addToCategory(context, p, category) }
-                            refresh()
-                        }, label = { Text("添加到本分类") }, leadingIcon = { Icon(Icons.Filled.Add, null, Modifier.size(16.dp)) })
+                        AssistChip(onClick = { batchTag = true; tagInput = "" },
+                            label = { Text("打标签") }, leadingIcon = { Icon(Icons.Filled.Edit, null, Modifier.size(16.dp)) })
                         AssistChip(onClick = {
                             AssetStore.deleteAll(context, selected.toList())
                             refresh()
@@ -292,17 +292,20 @@ fun GalleryScreen(appState: AppState) {
         )
     }
 
-    // 添加标签对话框
-    tagDialogItem?.let { target ->
+    // 添加标签对话框（batchTag 时对多选 selected 批量生效）
+    if (tagDialogItem != null || batchTag) {
+        val tagTargets = if (batchTag) selected.toList() else listOf(tagDialogItem!!.path)
         AlertDialog(
-            onDismissRequest = { tagDialogItem = null },
-            title = { Text("添加标签（${target.name}）") },
+            onDismissRequest = { tagDialogItem = null; batchTag = false },
+            title = { Text(if (batchTag) "批量添加标签（${tagTargets.size} 张）" else "添加标签（${tagDialogItem!!.name}）") },
             text = {
                 Column {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         tagGroups.forEach { tg ->
-                            AssistChip(onClick = { AssetStore.addTags(context, target.path, listOf(tg)); tagDialogItem = null; refresh() },
-                                label = { Text(tg) })
+                            AssistChip(onClick = {
+                                tagTargets.forEach { p -> AssetStore.addTags(context, p, listOf(tg)) }
+                                tagDialogItem = null; batchTag = false; refresh()
+                            }, label = { Text(tg) })
                         }
                     }
                     Spacer(Modifier.height(8.dp))
@@ -313,36 +316,26 @@ fun GalleryScreen(appState: AppState) {
                 Button(onClick = {
                     if (tagInput.isNotBlank()) {
                         AssetStore.addTagGroup(context, tagInput)
-                        AssetStore.addTags(context, target.path, listOf(tagInput))
+                        tagTargets.forEach { p -> AssetStore.addTags(context, p, listOf(tagInput)) }
                         tagGroups.clear(); tagGroups.addAll(AssetStore.loadTagGroups(context))
                         refresh()
                     }
-                    tagDialogItem = null; tagInput = ""
+                    tagDialogItem = null; batchTag = false; tagInput = ""
                 }) { Text("添加") }
             },
             dismissButton = {
-                Button(onClick = { tagDialogItem = null }) { Text("取消") }
+                Button(onClick = { tagDialogItem = null; batchTag = false }) { Text("取消") }
             }
         )
     }
 
-    // 长按单项菜单：添加到资产库（选分类）/ 收藏 / 重命名 / 打标签 / 移送
+    // 长按单项菜单：收藏 / 重命名 / 打标签 / 移送 / 删除
     menuItem?.let { item ->
         AlertDialog(
             onDismissRequest = { menuItem = null },
             title = { Text(File(item.path).name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AssetCategory.entries.filter { it != item.category && it != AssetCategory.PROMPT }.forEach { c ->
-                        Text("添加到「${c.label}」", modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable {
-                                AssetStore.addToCategory(context, item.path, c)
-                                refresh(); menuItem = null
-                            }
-                            .padding(10.dp))
-                    }
                     Text("收藏", modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(6.dp))
@@ -365,6 +358,14 @@ fun GalleryScreen(appState: AppState) {
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(6.dp))
                         .clickable { showMoveModeDialog = true; menuItem = null }
+                        .padding(10.dp))
+                    Text("删除", color = MaterialTheme.colorScheme.error, modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            AssetStore.delete(context, item.path)
+                            refresh(); menuItem = null
+                        }
                         .padding(10.dp))
                 }
             },

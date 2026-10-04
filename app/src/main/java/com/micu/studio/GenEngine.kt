@@ -21,6 +21,7 @@ object GenEngine {
         goal: String,
         images: List<String>,
         mode: GenMode,
+        genEnabled: Boolean = true,
         onTask: (TaskState) -> Unit
     ) {
         val cfg = app.config
@@ -31,6 +32,30 @@ object GenEngine {
         onTask(TaskState.Planning())
         try {
             when (mode) {
+                GenMode.CHAT -> {
+                    // 对话模式：多模态对话（带历史与参考图），对一次话最多生成 1 张，不迭代
+                    onTask(TaskState.Planning())
+                    val history = session.messages.filter { it.role == "user" || it.role == "assistant" }
+                    val reply = withContext(Dispatchers.IO) { APIClient.chat(cfg, history, emptyList(), genEnabled) }
+                    var imgs: List<Bitmap> = emptyList()
+                    if (reply.genPrompt != null) {
+                        onTask(TaskState.Generating())
+                        imgs = withContext(Dispatchers.IO) {
+                            APIClient.generate(cfg, reply.genPrompt, model = null, size = cfg.size, quality = cfg.quality, n = 1)
+                        }
+                    }
+                    val gs = imgs.map { bm ->
+                        val item = AssetStore.saveImage(context, bm, AssetCategory.GENERATED, sessionId = session.id)
+                        GenImage(item.path, reply.genPrompt ?: "", cfg.imgModel, cfg.size, cfg.quality, System.currentTimeMillis())
+                    }
+                    session.messages.add(
+                        ChatMessage(System.currentTimeMillis(), "assistant", reply.text.ifBlank { "好的" }, results = gs)
+                    )
+                    session.touch()
+                    onTask(TaskState.Done(true, if (gs.isNotEmpty()) "已生成 1 张" else "已回复"))
+                    LogStore.ok("对话模式完成: gen=${gs.isNotEmpty()} 回复=${reply.text.take(40)}")
+                }
+
                 GenMode.TEXT -> {
                     onTask(TaskState.Generating())
                     val imgs = withContext(Dispatchers.IO) {
@@ -139,6 +164,8 @@ object GenEngine {
                     }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             LogStore.err("生图失败: ${e.message}")
             onTask(TaskState.Done(false, "失败：${e.message}"))

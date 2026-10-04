@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -106,8 +107,10 @@ fun CreateScreen(appState: AppState) {
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
 
-    var mode by remember { mutableStateOf(GenMode.TEXT) }
+    var mode by remember { mutableStateOf(GenMode.CHAT) }
     var input by remember { mutableStateOf("") }
+    // 对话模式生图开关：开=AI 判断用户要图时生成 1 张；关=纯聊天
+    var genEnabled by remember { mutableStateOf(true) }
     val pickedImages = remember { mutableStateListOf<String>() }
     var multiSelect by remember { mutableStateOf(false) }
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -122,6 +125,13 @@ fun CreateScreen(appState: AppState) {
     var iterCountdown by remember { mutableIntStateOf(-1) }
 
     val session = appState.currentSession()
+
+    // 启动默认进入对话模式并自动新建会话
+    LaunchedEffect(Unit) {
+        if (appState.currentSession() == null) {
+            appState.newSession(GenMode.CHAT)
+        }
+    }
 
     // 移送带入：pendingMode 非空时（MainActivity 已切到本页）建会话并携带素材
     val pendingMode = appState.pendingMode
@@ -166,9 +176,13 @@ fun CreateScreen(appState: AppState) {
     }
 
     fun send() {
+        // 生成中点击发送键 = 停止当前任务
+        if (busy) {
+            appState.cancelCurrentTask()
+            return
+        }
         val goal = input.trim()
         if (goal.isEmpty() && pickedImages.isEmpty()) return
-        if (busy) return
         val s = appState.currentSession() ?: appState.newSession(mode)
         val uploads = pickedImages.toList()
         s.messages.add(ChatMessage(System.currentTimeMillis(), "user", goal, uploads = uploads))
@@ -177,11 +191,15 @@ fun CreateScreen(appState: AppState) {
         pickedImages.clear()
         appState.busy = true
         appState.setTask(TaskState.Planning())
-        scope.launch {
-            GenEngine.run(context, appState, s, goal.ifEmpty { "根据参考图生成" }, uploads, mode) { st ->
-                appState.setTask(st)
+        appState.currentJob = appState.appScope.launch {
+            try {
+                GenEngine.run(context, appState, s, goal.ifEmpty { "根据参考图生成" }, uploads, mode, genEnabled) { st ->
+                    appState.setTask(st)
+                }
+            } finally {
+                appState.currentJob = null
+                appState.busy = false
             }
-            appState.busy = false
         }
     }
 
@@ -261,6 +279,18 @@ fun CreateScreen(appState: AppState) {
                             IconButton(onClick = { multiSelect = false; selectedPaths = emptySet() }) {
                                 Icon(Icons.Filled.Close, contentDescription = "退出多选")
                             }
+                        } else {
+                            // 新建当前模式对话
+                            IconButton(onClick = {
+                                val s = appState.newSession(mode)
+                                mode = s.mode
+                                input = ""
+                                pickedImages.clear()
+                                selectedPaths = emptySet()
+                                multiSelect = false
+                            }) {
+                                Icon(Icons.Filled.Add, contentDescription = "新建对话")
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -275,7 +305,7 @@ fun CreateScreen(appState: AppState) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
                         Text(
                             when (taskState) {
-                                is TaskState.Planning -> "多模态规划参数与提示词…"
+                                is TaskState.Planning -> if (mode == GenMode.CHAT) "对话中…" else "多模态规划参数与提示词…"
                                 is TaskState.Generating -> "生成中…"
                                 is TaskState.Reviewing -> "AI 评审中…"
                                 is TaskState.Done -> if (taskState.ok) "完成" else taskState.message
@@ -305,6 +335,10 @@ fun CreateScreen(appState: AppState) {
                     InputBar(
                         pickedImages = pickedImages,
                         busy = busy,
+                        showPick = mode != GenMode.TEXT,
+                        showGen = mode == GenMode.CHAT,
+                        genEnabled = genEnabled,
+                        onToggleGen = { genEnabled = !genEnabled },
                         onPick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                         onRemove = { p -> pickedImages.remove(p) },
                         input = input,
@@ -369,15 +403,23 @@ fun CreateScreen(appState: AppState) {
                             }
                             Spacer(Modifier.height(16.dp))
                             Text(
-                                "发一句话或选参考图开始吧",
+                                when (mode) {
+                                    GenMode.CHAT -> "和 AI 聊天，说句话就能生成图片，也可以只聊天不画图"
+                                    GenMode.TEXT -> "发一句话开始吧"
+                                    else -> "发一句话或选参考图开始吧"
+                                },
                                 fontSize = 15.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp)
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 "长按生成图可 添加到资产库 / 移送至模式 / 收藏",
                                 fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp)
                             )
                         }
                     }
@@ -567,6 +609,10 @@ private fun DialogRow(label: String, icon: androidx.compose.ui.graphics.vector.I
 private fun InputBar(
     pickedImages: List<String>,
     busy: Boolean,
+    showPick: Boolean,
+    showGen: Boolean,
+    genEnabled: Boolean,
+    onToggleGen: () -> Unit,
     onPick: () -> Unit,
     onRemove: (String) -> Unit,
     input: String,
@@ -574,7 +620,28 @@ private fun InputBar(
     onSend: () -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
-        if (pickedImages.isNotEmpty()) {
+        // 对话模式生图开关：生图=AI 判断要图时生成；聊天=纯对话不生成
+        if (showGen) {
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (genEnabled) "对话中生图（每次最多 1 张）" else "纯聊天模式，不生成图片",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 6.dp)
+                )
+                FilterChip(
+                    selected = genEnabled,
+                    onClick = onToggleGen,
+                    enabled = !busy,
+                    label = { Text(if (genEnabled) "生图" else "聊天") }
+                )
+            }
+        }
+        if (pickedImages.isNotEmpty() && showPick) {
             // 参考图预览：每张一个框 + 独立“+”框，满了右滑
             Row(
                 Modifier
@@ -618,11 +685,13 @@ private fun InputBar(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         ) {
             Row(
-                verticalAlignment = Alignment.Bottom,
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(start = 2.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
             ) {
-                IconButton(onClick = onPick, enabled = !busy) {
-                    Icon(Icons.Filled.Add, contentDescription = "添加参考图", tint = MaterialTheme.colorScheme.primary)
+                if (showPick) {
+                    IconButton(onClick = onPick, enabled = !busy) {
+                        Icon(Icons.Filled.Add, contentDescription = "添加参考图", tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
                 BasicTextField(
                     value = input,
@@ -634,11 +703,17 @@ private fun InputBar(
                         .heightIn(min = 42.dp)
                         .padding(vertical = 9.dp),
                     decorationBox = { inner ->
-                        Box {
+                        Box(Modifier.fillMaxWidth()) {
                             if (input.isEmpty()) {
                                 Text(
-                                    "描述想生成的画面（迭代模式可在窗口内追加要求）",
+                                    when {
+                                        showGen -> "和 AI 聊聊，想画图直接说…"
+                                        showPick -> "描述想生成的画面（迭代模式可在窗口内追加要求）"
+                                        else -> "描述想生成的画面"
+                                    },
                                     fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                 )
                             }
@@ -646,7 +721,7 @@ private fun InputBar(
                         }
                     }
                 )
-                // 圆形发送键
+                // 圆形发送键：空闲=发送；生成中=停止（可点击）
                 Surface(
                     shape = CircleShape,
                     color = if (busy) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
@@ -654,14 +729,15 @@ private fun InputBar(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(CircleShape)
-                        .clickable(enabled = !busy, onClick = onSend)
+                        .clickable(onClick = onSend)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         if (busy) {
-                            CircularProgressIndicator(
-                                Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "停止生成",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp)
                             )
                         } else {
                             Icon(
