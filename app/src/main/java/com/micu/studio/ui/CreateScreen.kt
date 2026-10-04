@@ -10,6 +10,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,7 +30,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -311,15 +315,18 @@ fun CreateScreen(appState: AppState) {
             }
         ) { pad ->
             Column(Modifier.padding(pad).fillMaxSize()) {
-                // 模式切换
+                // 模式切换：轻盈胶囊标签
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     GenMode.entries.forEach { m ->
-                        FilterChip(
-                            selected = mode == m,
-                            onClick = {
+                        val selected = mode == m
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier.clickable {
                                 mode = m
                                 // 切模式自动切到对应会话（不存在则新建）
                                 val cur = appState.currentSession()
@@ -327,20 +334,52 @@ fun CreateScreen(appState: AppState) {
                                     val exist = appState.sessionsByMode(m).firstOrNull()
                                     if (exist != null) appState.openSession(exist.id) else appState.newSession(m)
                                 }
-                            },
-                            label = { Text(m.label) }
-                        )
+                            }
+                        ) {
+                            Text(
+                                m.label,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(4.dp))
 
                 if (messages.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            "发一句话或选参考图开始吧\n长按生成图可 添加到资产库 / 移送至模式 / 收藏",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.sp
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            // 视觉重心：柔和的圆形图标
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                modifier = Modifier.size(72.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.Add,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(30.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                "发一句话或选参考图开始吧",
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "长按生成图可 添加到资产库 / 移送至模式 / 收藏",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 } else {
                     LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)) {
@@ -534,60 +573,105 @@ private fun InputBar(
     onInput: (String) -> Unit,
     onSend: () -> Unit
 ) {
-    Surface(tonalElevation = 3.dp) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
-            if (pickedImages.isNotEmpty()) {
-                // 参考图预览：每张一个框 + 独立“+”框，满了右滑
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    pickedImages.forEach { p ->
-                        val bm = remember(p) { runCatching { BitmapFactory.decodeFile(p) }.getOrNull() }
-                        if (bm != null) {
-                            Box {
-                                Image(
-                                    bitmap = bm.asImageBitmap(),
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(52.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                )
-                                IconButton(
-                                    onClick = { onRemove(p) },
-                                    modifier = Modifier.align(Alignment.TopEnd).size(18.dp)
-                                ) { Icon(Icons.Filled.Close, null, Modifier.size(12.dp)) }
-                            }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+        if (pickedImages.isNotEmpty()) {
+            // 参考图预览：每张一个框 + 独立“+”框，满了右滑
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                pickedImages.forEach { p ->
+                    val bm = remember(p) { runCatching { BitmapFactory.decodeFile(p) }.getOrNull() }
+                    if (bm != null) {
+                        Box {
+                            Image(
+                                bitmap = bm.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+                            IconButton(
+                                onClick = { onRemove(p) },
+                                modifier = Modifier.align(Alignment.TopEnd).size(18.dp)
+                            ) { Icon(Icons.Filled.Close, null, Modifier.size(12.dp)) }
                         }
                     }
-                    // 独立“+”框：始终存在，图片多时自动在末尾（配合右滑）
-                    Box(
-                        Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                            .combinedClickable(onClick = onPick, onLongClick = {}),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Filled.Add, null, tint = MaterialTheme.colorScheme.primary) }
                 }
-                Spacer(Modifier.height(6.dp))
+                // 独立“+”框：始终存在，图片多时自动在末尾（配合右滑）
+                Box(
+                    Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .combinedClickable(onClick = onPick, onLongClick = {}),
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.Add, null, tint = MaterialTheme.colorScheme.primary) }
             }
-            Row(verticalAlignment = Alignment.Bottom) {
-                OutlinedTextField(
-                    value = input,
-                    onValueChange = onInput,
-                    placeholder = { Text("描述想生成的画面（迭代模式可在窗口内追加要求）") },
-                    minLines = 1, maxLines = 4,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.height(8.dp))
+        }
+        // 一体化输入胶囊：输入框 + 加号 + 发送键收进一个圆角容器
+        Surface(
+            shape = RoundedCornerShape(26.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        ) {
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                modifier = Modifier.padding(start = 2.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
+            ) {
                 IconButton(onClick = onPick, enabled = !busy) {
                     Icon(Icons.Filled.Add, contentDescription = "添加参考图", tint = MaterialTheme.colorScheme.primary)
                 }
-                Button(onClick = onSend, enabled = !busy, modifier = Modifier.height(52.dp)) {
-                    if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Filled.Send, null)
+                BasicTextField(
+                    value = input,
+                    onValueChange = onInput,
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 42.dp)
+                        .padding(vertical = 9.dp),
+                    decorationBox = { inner ->
+                        Box {
+                            if (input.isEmpty()) {
+                                Text(
+                                    "描述想生成的画面（迭代模式可在窗口内追加要求）",
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                            inner()
+                        }
+                    }
+                )
+                // 圆形发送键
+                Surface(
+                    shape = CircleShape,
+                    color = if (busy) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                            else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .clickable(enabled = !busy, onClick = onSend)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (busy) {
+                            CircularProgressIndicator(
+                                Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Icon(
+                                Icons.Filled.Send,
+                                contentDescription = "发送",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
